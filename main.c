@@ -3,7 +3,7 @@
 *
 * Description: This is the source code for the XMC MCU: WDT FEED Example for
 *              ModusToolbox.
-*              The WDT needs to be fed every second for proper serving of the
+*              The WDT needs to be fed every second for the proper serving of the
 *              WDT. The SysTick timer is used to feed the WDT. When feeding
 *              occurs, the User LED blinks. If there is no feeding, the device
 *              goes into reset. After the reset, the MCU checks the reason for
@@ -14,7 +14,7 @@
 *
 ********************************************************************************
 *
-* Copyright (c) 2015-2020, Infineon Technologies AG
+* Copyright (c) 2015-2022, Infineon Technologies AG
 * All rights reserved.
 *
 * Boost Software License - Version 1.0 - August 17th, 2003
@@ -42,24 +42,39 @@
 * DEALINGS IN THE SOFTWARE.
 *
 ********************************************************************************/
+#include <stdio.h>
 #include "cybsp.h"
 #include "cy_utils.h"
+#include "cy_retarget_io.h"
 #include "xmc_wdt.h"
 
 /*******************************************************************************
 * Defines
 *******************************************************************************/
-#ifdef TARGET_KIT_XMC14_BOOT_001
-#define COUNTS_DELAY (500000U)
+#if (UC_SERIES == XMC14)
+#define COUNTS_DELAY                        (500000U)
 #endif
 
-#ifdef TARGET_KIT_XMC47_RELAX_V1
-#define COUNTS_DELAY (2000000U)
+#if (UC_SERIES == XMC47)
+#define COUNTS_DELAY                        (2000000U)
 #endif
 
-#define TICKS_PER_SECOND  (1000U)
-#define TICKS_WAIT        (1000U)
-#define MAX_NUM_FEEDS     (10U)
+#define TICKS_PER_SECOND                    (1000U)
+#define TICKS_WAIT                          (1000U)
+#define MAX_NUM_FEEDS                       (10U)
+
+/* Define macro to enable/disable printing of debug messages */
+#define ENABLE_XMC_DEBUG_PRINT              (0)
+
+/* Define macro to set the loop count before printing debug messages */
+#if ENABLE_XMC_DEBUG_PRINT
+#define DEBUG_LOOP_COUNT_MAX                (1U)
+#endif
+
+/*******************************************************************************
+* Defines
+*******************************************************************************/
+static volatile bool interrupt_handler_flag = false;
 
 /*******************************************************************************
  * Data Structures
@@ -93,12 +108,13 @@ void SysTick_Handler(void)
     static uint32_t feeds = 0;
 
     ticks++;
-    /* Watchdog is feed 10 times inside system handler ISR */
+    /* Watchdog is fed 10 times inside system handler ISR */
     if (ticks == TICKS_WAIT && feeds < MAX_NUM_FEEDS)
     {
+        interrupt_handler_flag = true;
         /* User LED blinks 5 times */
         XMC_GPIO_ToggleOutput(CYBSP_USER_LED_PORT, CYBSP_USER_LED_PIN);
-        /* Service watchdog when count value of watchdog timer is between lower and upper window bounds */
+        /* Service watchdog when the count value of watchdog timer is between lower and upper window bounds */
         XMC_WDT_Service();
         ticks = 0;
         feeds++;
@@ -123,12 +139,26 @@ int main(void)
 {
     cy_rslt_t result;
 
+    #if ENABLE_XMC_DEBUG_PRINT
+    /* Assign false to disable printing of debug messages*/
+    static volatile bool debug_printf = true;
+    /* Initialize the current loop count to zero */
+    static uint32_t debug_loop_count = 0;
+    #endif
+
     /* Initialize the device and board peripherals */
     result = cybsp_init();
     if (result != CY_RSLT_SUCCESS)
     {
         CY_ASSERT(0);
     }
+
+    /* Initialize retarget-io to use the debug UART port */
+    cy_retarget_io_init(CYBSP_DEBUG_UART_HW);
+
+    #if ENABLE_XMC_DEBUG_PRINT
+    printf("Initialization done\r\n");
+    #endif
 
     /* Check the reason for reset */
     if ((XMC_SCU_RESET_GetDeviceResetReason() & XMC_SCU_RESET_REASON_WATCHDOG) != 0)
@@ -143,13 +173,24 @@ int main(void)
             {
                 __NOP();
             }
+
+            #if ENABLE_XMC_DEBUG_PRINT
+            debug_loop_count++;
+
+            if (debug_printf && debug_loop_count == DEBUG_LOOP_COUNT_MAX)
+            {
+                debug_printf = false;
+                /* Print message after the loop has run DEBUG_LOOP_COUNT_MAX times */
+                printf("LED toggle due to watchdog reset\r\n");
+            }
+            #endif
         }
     }
 
     /* Clear system reset status */
     XMC_SCU_RESET_ClearDeviceResetReason();
 
-    #ifdef  TARGET_KIT_XMC47_RELAX_V1
+    #if (UC_SERIES == XMC47)
     /* Use standby clock as watchdog clock source */
     XMC_SCU_HIB_EnableHibernateDomain();
     XMC_SCU_CLOCK_SetWdtClockSource(XMC_SCU_CLOCK_WDTCLKSRC_STDBY);
@@ -168,6 +209,16 @@ int main(void)
     while (1)
     {
         /* Infinite loop */
+
+        #if ENABLE_XMC_DEBUG_PRINT
+        if(interrupt_handler_flag && debug_printf)
+        {
+            debug_printf = false;
+            interrupt_handler_flag = false;
+            /* Print message after the loop has run DEBUG_LOOP_COUNT_MAX times */
+            printf("LED toggle when the count value of watchdog timer is between lower and upper window bounds\r\n");
+        }
+        #endif
     }
 }
 
