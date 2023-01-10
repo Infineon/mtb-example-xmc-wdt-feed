@@ -46,16 +46,19 @@
 #include "cybsp.h"
 #include "cy_utils.h"
 #include "cy_retarget_io.h"
-#include "xmc_wdt.h"
 
 /*******************************************************************************
 * Defines
 *******************************************************************************/
+#if (UC_SERIES == XMC11) || (UC_SERIES == XMC12) || (UC_SERIES == XMC13)
+#define COUNTS_DELAY                        (200000U)
+#endif
+
 #if (UC_SERIES == XMC14)
 #define COUNTS_DELAY                        (500000U)
 #endif
 
-#if (UC_SERIES == XMC47)
+#if (UC_SERIES == XMC48) || (UC_SERIES == XMC47) || (UC_SERIES == XMC45) || (UC_SERIES == XMC44) || (UC_SERIES == XMC43) || (UC_SERIES == XMC42)
 #define COUNTS_DELAY                        (2000000U)
 #endif
 
@@ -75,18 +78,6 @@
 * Defines
 *******************************************************************************/
 static volatile bool interrupt_handler_flag = false;
-
-/*******************************************************************************
- * Data Structures
- ******************************************************************************/
-/* Structure for initializing watchdog timer */
-XMC_WDT_CONFIG_t wdt_config =
-{
-    .window_lower_bound  = 30000,  /* Lower bound for servicing window (WLB)--Range: [0H to FFFFFFFFH] */
-    .window_upper_bound  = 35000,  /* Upper bound for service window (WUB),Reset request is generated up on overflow of timer-Range: [0H to FFFFFFFFH] */
-    .service_pulse_width = 255,    /* Service Indication Pulse Width (SPW)-Range: [0H to FFH] */
-};
-
 /*******************************************************************************
 * Function Name: SysTick Handler
 ********************************************************************************
@@ -190,15 +181,12 @@ int main(void)
     /* Clear system reset status */
     XMC_SCU_RESET_ClearDeviceResetReason();
 
-    #if (UC_SERIES == XMC47)
+    #if (UC_SERIES == XMC48) || (UC_SERIES == XMC47) || (UC_SERIES == XMC45) || (UC_SERIES == XMC44) || (UC_SERIES == XMC43) || (UC_SERIES == XMC42)
     /* Use standby clock as watchdog clock source */
     XMC_SCU_HIB_EnableHibernateDomain();
     XMC_SCU_CLOCK_SetWdtClockSource(XMC_SCU_CLOCK_WDTCLKSRC_STDBY);
     XMC_SCU_CLOCK_EnableClock(XMC_SCU_CLOCK_WDT);
     #endif
-
-    /* Initializes and configures watchdog */
-    XMC_WDT_Init(&wdt_config);
 
     /* Start the watchdog timer */
     XMC_WDT_Start();
